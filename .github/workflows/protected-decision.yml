@@ -104,8 +104,12 @@ jobs:
 
           errors = []
           governance = None
+          governance_check = None
           base_sha = None
           manifest_digest = None
+          pull = None
+          governance_run_api_head_sha = None
+          governance_check_details_url_observed = None
 
           if not re.fullmatch(r"[0-9a-f]{40}", CANDIDATE):
               errors.append("candidate SHA is not an exact 40-character lowercase commit identity")
@@ -149,6 +153,8 @@ jobs:
                   errors.append("no unique live pull request for the candidate source")
               elif exact_pulls[0].get("head", {}).get("sha") != CANDIDATE:
                   errors.append("live pull-request head does not match the completed run")
+              else:
+                  pull = exact_pulls[0]
           except Exception as exc:
               errors.append(str(exc))
 
@@ -160,6 +166,7 @@ jobs:
                   errors.append("candidate does not have exactly one governance-record")
               else:
                   governance_check = matches[0]
+                  governance_check_details_url_observed = governance_check.get("details_url")
                   if governance_check.get("conclusion") != "success":
                       errors.append("governance-record conclusion is not success")
                   if governance_check.get("status") != "completed":
@@ -190,12 +197,6 @@ jobs:
                       )
                       if governance_check.get("external_id") != expected_external_id:
                           errors.append("governance-record external ID mismatch")
-                      expected_details = (
-                          f"https://github.com/{REPO}/actions/runs/"
-                          f"{governance.get('governance_run_id')}"
-                      )
-                      if governance_check.get("details_url") != expected_details:
-                          errors.append("governance-record details URL mismatch")
                       base_sha = governance.get("base_sha")
                       if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
                           errors.append("governance-record base SHA invalid")
@@ -220,12 +221,27 @@ jobs:
                   governance_path = (run.get("path") or "").split("@", 1)[0]
                   if governance_path != ".github/workflows/governance.yml":
                       errors.append("governance workflow path mismatch")
-                  if run.get("head_sha") != base_sha:
-                      errors.append("governance protected-base SHA mismatch")
+                  governance_run_api_head_sha = run.get("head_sha")
+                  if governance_run_api_head_sha != CANDIDATE:
+                      errors.append("governance run candidate association mismatch")
+                  if run.get("head_branch") != os.environ["SOURCE_REF"]:
+                      errors.append("governance run source-ref association mismatch")
+                  if (run.get("head_repository") or {}).get("full_name") != EXPECTED_SOURCE:
+                      errors.append("governance run source-repository association mismatch")
                   if (run.get("repository") or {}).get("id") != int(os.environ["REPOSITORY_ID"]):
                       errors.append("governance repository ID mismatch")
                   if governance_check.get("check_suite", {}).get("id") != run.get("check_suite_id"):
                       errors.append("governance check-suite identity mismatch")
+
+                  if pull is None:
+                      errors.append("live pull-request base binding unavailable")
+                  else:
+                      if (pull.get("base", {}).get("repo") or {}).get("full_name") != REPO:
+                          errors.append("live pull-request base repository mismatch")
+                      if pull.get("base", {}).get("ref") != "main":
+                          errors.append("live pull-request base ref mismatch")
+                      if pull.get("base", {}).get("sha") != base_sha:
+                          errors.append("live pull-request base SHA mismatch")
 
                   quoted_ref = urllib.parse.quote(base_sha, safe="")
                   _, item = api("GET", f"/repos/{REPO}/contents/preflight/protected-manifest.json?ref={quoted_ref}")
@@ -246,6 +262,8 @@ jobs:
               "recorder_run_id": int(os.environ["RECORDER_RUN_ID"]),
               "recorder_run_attempt": int(os.environ["RECORDER_RUN_ATTEMPT"]),
               "protected_manifest_sha256": manifest_digest,
+              "governance_run_api_head_sha_observed": governance_run_api_head_sha,
+              "governance_check_details_url_observed": governance_check_details_url_observed,
               "validation": "failed" if errors else "passed",
               "errors": errors,
           }
