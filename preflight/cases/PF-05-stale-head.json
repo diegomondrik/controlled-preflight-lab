@@ -4,6 +4,13 @@
   "title": "Stale candidate head is not accepted",
   "candidate_branch": "preflight/pf-04-pf-05-head-binding",
   "objective": "Confirm that a completed run for an earlier candidate commit cannot authorize the pull request after its head changes.",
+  "candidate_fixture": {
+    "head_sequence": [
+      "head-1-producer-present",
+      "head-2-producer-deleted"
+    ],
+    "compare_check_runs_per_sha": true
+  },
   "allowed_changed_paths": [
     ".github/workflows/candidate-runtime.yml",
     "preflight/cases/PF-04-missing-producer.json",
