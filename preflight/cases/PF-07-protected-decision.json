@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "case_id": "PF-07",
+  "title": "Protected decision is attributed to the exact candidate commit",
+  "candidate_branch": "preflight/pf-07-attribution",
+  "objective": "Test whether the protected recorder can create the required protected-decision check on the exact fork candidate SHA while retaining protected producer identity.",
+  "allowed_changed_paths": [
+    ".github/workflows/candidate-runtime.yml",
+    "preflight/cases/PF-07-protected-decision.json"
+  ],
+  "required_observations": [
+    "decision check head SHA equals the authoritative candidate SHA",
+    "decision producer is the protected recorder app",
+    "a base-SHA control request distinguishes attribution refusal from general permission failure",
+    "all evidence bindings remain exact"
+  ],
+  "fail_closed_on": [
+    "candidate-SHA check creation denied",
+    "base-SHA control creation denied",
+    "producer identity mismatch",
+    "check attached to base or merge SHA",
+    "ambiguous API response"
+  ]
+}

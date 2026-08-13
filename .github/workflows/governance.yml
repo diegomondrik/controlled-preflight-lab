@@ -1,0 +1,216 @@
+name: governance
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  protected-governance:
+    name: protected-governance
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ github.api_url }}
+      REPOSITORY: ${{ github.repository }}
+      REPOSITORY_ID: ${{ github.repository_id }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+      SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      SOURCE_REF: ${{ github.event.pull_request.head.ref }}
+      GOVERNANCE_RUN_ID: ${{ github.run_id }}
+      GOVERNANCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+      PROVIDER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Validate protected policy and record the candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          API = os.environ["API_URL"].rstrip("/")
+          REPO = os.environ["REPOSITORY"]
+          TOKEN = os.environ["PROVIDER_TOKEN"]
+
+          def api(method, path, payload=None, allow_error=False):
+              body = None if payload is None else json.dumps(payload).encode("utf-8")
+              request = urllib.request.Request(
+                  API + path,
+                  data=body,
+                  method=method,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": "Bearer " + TOKEN,
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "controlled-preflight-governance",
+                      "Content-Type": "application/json",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      raw = response.read()
+                      return response.status, json.loads(raw) if raw else None
+              except urllib.error.HTTPError as error:
+                  raw = error.read()
+                  try:
+                      detail = json.loads(raw)
+                  except Exception:
+                      detail = {"message": raw.decode("utf-8", "replace")[:1000]}
+                  if allow_error:
+                      return error.code, detail
+                  raise RuntimeError(f"API {method} {path} returned {error.code}: {detail}") from error
+
+          def read_base(path):
+              quoted = urllib.parse.quote(path, safe="/")
+              ref = urllib.parse.quote(os.environ["BASE_SHA"], safe="")
+              _, item = api("GET", f"/repos/{REPO}/contents/{quoted}?ref={ref}")
+              if not isinstance(item, dict) or item.get("type") != "file" or item.get("encoding") != "base64":
+                  raise RuntimeError(f"protected base file unavailable: {path}")
+              return base64.b64decode(item["content"], validate=False)
+
+          errors = []
+          manifest = None
+          manifest_bytes = b""
+          try:
+              manifest_bytes = read_base("preflight/protected-manifest.json")
+              manifest = json.loads(manifest_bytes)
+              if manifest.get("schema_version") != "1.0":
+                  errors.append("unsupported protected manifest schema")
+          except Exception as exc:
+              errors.append(str(exc))
+
+          if manifest:
+              expected_lab = manifest.get("laboratory", {})
+              exact = {
+                  "upstream_repository": REPO,
+                  "candidate_repository": os.environ["SOURCE_REPOSITORY"],
+                  "target_branch": os.environ["BASE_REF"],
+              }
+              for key, observed in exact.items():
+                  if expected_lab.get(key) != observed:
+                      errors.append(f"laboratory identity mismatch: {key}")
+
+              for protected in manifest.get("protected_files", []):
+                  try:
+                      content = read_base(protected["path"])
+                      observed = hashlib.sha256(content).hexdigest()
+                      if observed != protected["sha256"]:
+                          errors.append(f"protected digest mismatch: {protected['path']}")
+                  except Exception as exc:
+                      errors.append(str(exc))
+
+              changed = []
+              page = 1
+              try:
+                  while True:
+                      _, items = api(
+                          "GET",
+                          f"/repos/{REPO}/pulls/{os.environ['PR_NUMBER']}/files?per_page=100&page={page}",
+                      )
+                      if not isinstance(items, list):
+                          raise RuntimeError("pull-request file listing was not a list")
+                      changed.extend(item["filename"] for item in items)
+                      if len(items) < 100:
+                          break
+                      page += 1
+                  if len(changed) != len(set(changed)):
+                      errors.append("duplicate changed path returned by provider")
+              except Exception as exc:
+                  errors.append(str(exc))
+
+              case = next(
+                  (
+                      item
+                      for item in manifest.get("candidate_cases", [])
+                      if item.get("branch") == os.environ["SOURCE_REF"]
+                  ),
+                  None,
+              )
+              if case is None:
+                  errors.append("candidate branch is not enumerated")
+              else:
+                  allowed = set(case.get("allowed_changed_paths", []))
+                  unexpected = sorted(set(changed) - allowed)
+                  if unexpected:
+                      errors.append("unexpected changed paths: " + ", ".join(unexpected))
+                  missing = sorted(set(case.get("required_changed_paths", [])) - set(changed))
+                  if missing:
+                      errors.append("required changed paths absent: " + ", ".join(missing))
+
+              frozen = set(manifest.get("frozen_candidate_paths", []))
+              touched_frozen = sorted(set(changed) & frozen)
+              if touched_frozen:
+                  errors.append("candidate modified frozen paths: " + ", ".join(touched_frozen))
+
+          record = {
+              "schema_version": "1.0",
+              "candidate_sha": os.environ["CANDIDATE_SHA"],
+              "base_sha": os.environ["BASE_SHA"],
+              "source_repository": os.environ["SOURCE_REPOSITORY"],
+              "source_ref": os.environ["SOURCE_REF"],
+              "governance_repository_id": int(os.environ["REPOSITORY_ID"]),
+              "governance_run_id": int(os.environ["GOVERNANCE_RUN_ID"]),
+              "governance_run_attempt": int(os.environ["GOVERNANCE_RUN_ATTEMPT"]),
+              "protected_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest() if manifest_bytes else None,
+              "validation": "failed" if errors else "passed",
+              "errors": errors,
+          }
+          conclusion = "failure" if errors else "success"
+          payload = {
+              "name": "governance-record",
+              "head_sha": os.environ["CANDIDATE_SHA"],
+              "status": "completed",
+              "conclusion": conclusion,
+              "external_id": f"governance:{os.environ['GOVERNANCE_RUN_ID']}:{os.environ['GOVERNANCE_RUN_ATTEMPT']}",
+              "details_url": f"https://github.com/{REPO}/actions/runs/{os.environ['GOVERNANCE_RUN_ID']}",
+              "output": {
+                  "title": "Protected governance " + conclusion,
+                  "summary": json.dumps(record, sort_keys=True, separators=(",", ":")),
+              },
+          }
+          status, response = api(
+              "POST",
+              f"/repos/{REPO}/check-runs",
+              payload,
+              allow_error=True,
+          )
+          if status != 201:
+              classification = "denied" if status == 403 else "ambiguous"
+              errors.append(f"governance-record check creation returned HTTP {status}")
+              record["validation"] = "failed"
+              record["errors"] = errors
+              print(json.dumps({
+                  "schema_version": "1.0",
+                  "classification": "governance_record_creation_" + classification,
+                  "api_attempt": {
+                      "operation": "create_governance_record",
+                      "target": os.environ["CANDIDATE_SHA"],
+                      "http_status": status,
+                      "classification": classification,
+                  },
+                  "record": record,
+                  "response": response,
+              }, indent=2, sort_keys=True))
+              sys.exit(1)
+          print(json.dumps(record, indent=2, sort_keys=True))
+          if errors:
+              sys.exit(1)
+          PY

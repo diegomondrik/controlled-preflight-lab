@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "case_id": "PF-02",
+  "title": "Candidate check-name impersonation is rejected",
+  "candidate_branch": "preflight/pf-02-pf-06-impersonation",
+  "objective": "Demonstrate that a candidate-controlled workflow cannot satisfy the protected governance or decision identity by reusing a display name.",
+  "allowed_changed_paths": [
+    ".github/workflows/impersonating-governance.yml",
+    ".github/workflows/candidate-runtime.yml",
+    "preflight/cases/PF-02-check-impersonation.json",
+    "preflight/cases/PF-06-neutral-result.json"
+  ],
+  "required_observations": [
+    "the enumerated hostile workflow remains outside the protected producer path",
+    "producer app identity and workflow identity are checked independently of the display name",
+    "no impersonating result is promoted to protected-decision"
+  ],
+  "fail_closed_on": [
+    "duplicate protected record",
+    "unrecognized producer",
+    "unrecognized workflow path",
+    "missing app identity",
+    "ambiguous check selection"
+  ]
+}

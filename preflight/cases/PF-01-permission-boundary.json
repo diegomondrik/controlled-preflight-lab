@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "case_id": "PF-01",
+  "title": "Fork token cannot mutate the upstream repository",
+  "candidate_branch": "preflight/pf-01-permission-boundary",
+  "objective": "Observe a denied attempt to create the harmless upstream probe reference from the fork pull-request runtime.",
+  "allowed_changed_paths": [
+    ".github/workflows/candidate-runtime.yml"
+  ],
+  "required_observations": [
+    "the candidate workflow requests the declared write scope from the exact laboratory fork",
+    "requested contents write permission is reduced by the fork boundary",
+    "the upstream preflight-write-probe reference creation returns an explicit denial",
+    "no upstream reference is created"
+  ],
+  "fail_closed_on": [
+    "successful mutation",
+    "probe reference already exists",
+    "unexpected HTTP status",
+    "missing source identity",
+    "candidate SHA mismatch"
+  ]
+}

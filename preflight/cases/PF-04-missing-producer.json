@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "case_id": "PF-04",
+  "title": "Missing protected producer blocks promotion",
+  "candidate_branch": "preflight/pf-04-pf-05-head-binding",
+  "objective": "Confirm that absence of the unique protected governance record for the candidate commit prevents a protected decision.",
+  "allowed_changed_paths": [
+    ".github/workflows/candidate-runtime.yml",
+    "preflight/cases/PF-04-missing-producer.json",
+    "preflight/cases/PF-05-stale-head.json"
+  ],
+  "required_observations": [
+    "protected recorder searches for one exact governance-record on the candidate SHA",
+    "zero matching protected producers is a failure",
+    "candidate runtime success alone is insufficient"
+  ],
+  "fail_closed_on": [
+    "zero matching governance records",
+    "more than one matching governance record",
+    "producer identity mismatch",
+    "candidate SHA mismatch"
+  ]
+}

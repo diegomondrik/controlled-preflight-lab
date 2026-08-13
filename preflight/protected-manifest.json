@@ -1,0 +1,197 @@
+{
+  "schema_version": "1.0",
+  "laboratory": {
+    "upstream_repository": "diegomondrik/controlled-preflight-lab",
+    "candidate_repository": "controlled-preflight-bot/controlled-preflight-lab",
+    "machine_account": "controlled-preflight-bot",
+    "target_branch": "main",
+    "ruleset_name": "protect-main",
+    "required_protected_result": "protected-decision",
+    "harmless_probe_branch": "preflight-write-probe"
+  },
+  "trust_domains": [
+    {
+      "domain": "protected-governance",
+      "workflow_path": ".github/workflows/governance.yml",
+      "event": "pull_request_target",
+      "candidate_content_policy": "identity-and-path-metadata-only"
+    },
+    {
+      "domain": "candidate-runtime",
+      "workflow_path": ".github/workflows/candidate-runtime.yml",
+      "event": "pull_request",
+      "candidate_content_policy": "untrusted-isolated-execution"
+    },
+    {
+      "domain": "protected-recorder",
+      "workflow_path": ".github/workflows/protected-decision.yml",
+      "event": "workflow_run",
+      "candidate_content_policy": "provider-and-protected-metadata-only"
+    }
+  ],
+  "container": {
+    "image": "golang:1.26.5-bookworm",
+    "platform": "linux/amd64",
+    "sha256": "1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651",
+    "network": "none",
+    "root_filesystem": "read-only",
+    "user": "65532:65532",
+    "capabilities": "drop-all",
+    "no_new_privileges": true,
+    "memory_bytes": 536870912,
+    "cpus": 1,
+    "pids": 128,
+    "timeout_seconds": 120,
+    "work_tmpfs_bytes": 268435456,
+    "tmp_tmpfs_bytes": 67108864
+  },
+  "resource_ceiling": {
+    "pull_requests": 5,
+    "candidate_heads": 6,
+    "workflow_runs_including_reruns": 24,
+    "reruns": 6,
+    "runner_minutes": 90,
+    "cache": false,
+    "artifacts": false,
+    "paid_plan": false
+  },
+  "candidate_cases": [
+    {
+      "case_ids": ["PF-01"],
+      "branch": "preflight/pf-01-permission-boundary",
+      "allowed_changed_paths": [
+        ".github/workflows/candidate-runtime.yml"
+      ],
+      "required_changed_paths": [
+        ".github/workflows/candidate-runtime.yml"
+      ]
+    },
+    {
+      "case_ids": ["PF-07"],
+      "branch": "preflight/pf-07-attribution",
+      "allowed_changed_paths": [
+        ".github/workflows/candidate-runtime.yml",
+        "preflight/cases/PF-07-protected-decision.json"
+      ],
+      "required_changed_paths": [
+        ".github/workflows/candidate-runtime.yml",
+        "preflight/cases/PF-07-protected-decision.json"
+      ]
+    },
+    {
+      "case_ids": ["PF-02", "PF-06"],
+      "branch": "preflight/pf-02-pf-06-impersonation",
+      "allowed_changed_paths": [
+        ".github/workflows/impersonating-governance.yml",
+        ".github/workflows/candidate-runtime.yml",
+        "preflight/cases/PF-02-check-impersonation.json",
+        "preflight/cases/PF-06-neutral-result.json"
+      ],
+      "required_changed_paths": [
+        ".github/workflows/impersonating-governance.yml",
+        ".github/workflows/candidate-runtime.yml",
+        "preflight/cases/PF-02-check-impersonation.json",
+        "preflight/cases/PF-06-neutral-result.json"
+      ]
+    },
+    {
+      "case_ids": ["PF-04", "PF-05"],
+      "branch": "preflight/pf-04-pf-05-head-binding",
+      "allowed_changed_paths": [
+        ".github/workflows/candidate-runtime.yml",
+        "preflight/cases/PF-04-missing-producer.json",
+        "preflight/cases/PF-05-stale-head.json"
+      ],
+      "required_changed_paths": [
+        ".github/workflows/candidate-runtime.yml",
+        "preflight/cases/PF-04-missing-producer.json",
+        "preflight/cases/PF-05-stale-head.json"
+      ]
+    },
+    {
+      "case_ids": ["PF-08"],
+      "branch": "preflight/pf-08-hostile-input",
+      "allowed_changed_paths": [
+        "preflight/cases/PF-08-hostile-input.json",
+        "go.mod",
+        "go.work",
+        "Makefile",
+        ".github/actions/hostile/action.yml",
+        "preflight/fixtures/PF-08/escape-link"
+      ],
+      "required_changed_paths": [
+        "preflight/cases/PF-08-hostile-input.json",
+        "go.mod",
+        "go.work",
+        "Makefile",
+        ".github/actions/hostile/action.yml",
+        "preflight/fixtures/PF-08/escape-link"
+      ]
+    }
+  ],
+  "frozen_candidate_paths": [
+    ".github/workflows/governance.yml",
+    ".github/workflows/protected-decision.yml",
+    "preflight/evidence.schema.json",
+    "preflight/protected-manifest.json",
+    "preflight/scripts/candidate-wrapper.sh"
+  ],
+  "protected_files": [
+    {
+      "path": "README.md",
+      "sha256": "4b80f8a961c8b81d44cbef5081aca4e572b4d8bba8c1a81789daad1c61a306b5"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "afeaef3137fa92f4fd321df8b1d9daa3e49ef96adf3b174ec97403735ff62dbc"
+    },
+    {
+      "path": ".github/workflows/candidate-runtime.yml",
+      "sha256": "5a6da1175ced4d206535d08350093cdf0b74a85f3c2b3dd55bd82b450f2d8798"
+    },
+    {
+      "path": ".github/workflows/governance.yml",
+      "sha256": "b17a446fb41e6b2771be751fe7428539e6972dce8dc55f3c915ddcd8c9471a33"
+    },
+    {
+      "path": ".github/workflows/protected-decision.yml",
+      "sha256": "58646a31163dc0ae6648b702f7b5c5632e8f1d670ac7cf42e08f7f64eb7c47e2"
+    },
+    {
+      "path": "preflight/evidence.schema.json",
+      "sha256": "7aeb6192e8effdf44fe1ec43906396cf6ec45c2db7657db0dcc69c0a1b07836b"
+    },
+    {
+      "path": "preflight/cases/PF-01-permission-boundary.json",
+      "sha256": "a495ad07c4097fd514c2e195bf937158ae28a6733a4b1f665db34fa2e57d307d"
+    },
+    {
+      "path": "preflight/cases/PF-02-check-impersonation.json",
+      "sha256": "b312d8193090e919d5b3b286fd9a8ac37ecec1572713bc62dee9854df301c6c3"
+    },
+    {
+      "path": "preflight/cases/PF-04-missing-producer.json",
+      "sha256": "9c96204283ca5c3fdf6c5c085c0816bb8711a516fc625ab0ce051ca842a0bf9d"
+    },
+    {
+      "path": "preflight/cases/PF-05-stale-head.json",
+      "sha256": "98581d569c8a2643778ae863f8853bb6df094c85ce87c66b1fd1e117d939f413"
+    },
+    {
+      "path": "preflight/cases/PF-06-neutral-result.json",
+      "sha256": "5d6cdfd918500dd8a9efa27d63b00c8fe16937ed29a0bbaffd55b9aa5e30e54c"
+    },
+    {
+      "path": "preflight/cases/PF-07-protected-decision.json",
+      "sha256": "75f1a18000c90997b0f6e76587626c5d70605984835e5b7bdffdd8e9150bd8d3"
+    },
+    {
+      "path": "preflight/cases/PF-08-hostile-input.json",
+      "sha256": "eb612bbdf59748bd76b23bdb839566b33224ea6fc9c2f206d138efb0ea7cb9d4"
+    },
+    {
+      "path": "preflight/scripts/candidate-wrapper.sh",
+      "sha256": "ec39e2e728acf013843372bb9eb54da63fcfcace80eb0fb5493226a200c5a775"
+    }
+  ]
+}

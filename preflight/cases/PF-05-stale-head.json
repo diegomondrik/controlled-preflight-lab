@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "case_id": "PF-05",
+  "title": "Stale candidate head is not accepted",
+  "candidate_branch": "preflight/pf-04-pf-05-head-binding",
+  "objective": "Confirm that a completed run for an earlier candidate commit cannot authorize the pull request after its head changes.",
+  "allowed_changed_paths": [
+    ".github/workflows/candidate-runtime.yml",
+    "preflight/cases/PF-04-missing-producer.json",
+    "preflight/cases/PF-05-stale-head.json"
+  ],
+  "required_observations": [
+    "workflow_run head SHA is fixed before metadata evaluation",
+    "the current open pull-request head is fetched from the provider API",
+    "a stale run SHA and live head SHA mismatch blocks protected-decision"
+  ],
+  "fail_closed_on": [
+    "no unique live pull request",
+    "live head mismatch",
+    "source repository mismatch",
+    "source reference mismatch"
+  ]
+}

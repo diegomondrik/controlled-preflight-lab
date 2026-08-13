@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "case_id": "PF-08",
+  "title": "Hostile candidate input remains confined",
+  "candidate_branch": "preflight/pf-08-hostile-input",
+  "objective": "Demonstrate that protected governance treats hostile candidate build, configuration, action, and symlink inputs exclusively as path metadata.",
+  "allowed_changed_paths": [
+    "preflight/cases/PF-08-hostile-input.json",
+    "go.mod",
+    "go.work",
+    "Makefile",
+    ".github/actions/hostile/action.yml",
+    "preflight/fixtures/PF-08/escape-link"
+  ],
+  "required_observations": [
+    "protected governance lists candidate paths through the provider API",
+    "protected governance does not check out the candidate commit",
+    "candidate action metadata is never loaded by protected governance",
+    "candidate build files are never invoked by protected governance",
+    "the synthetic symlink target is never resolved by protected governance"
+  ],
+  "fail_closed_on": [
+    "candidate checkout in protected governance",
+    "candidate file read in protected governance",
+    "candidate action invocation in protected governance",
+    "candidate build command in protected governance",
+    "candidate symlink resolution in protected governance"
+  ]
+}

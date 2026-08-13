@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/controlled-preflight-evidence-v1.json",
+  "title": "Controlled preflight evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "classification",
+    "topology",
+    "identities",
+    "bindings",
+    "digests",
+    "permissions",
+    "api_attempts",
+    "result",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "case_id": { "type": "string", "pattern": "^PF-[0-9]{2}$" },
+    "classification": {
+      "enum": ["passed", "failed", "ambiguous", "not_observed"]
+    },
+    "topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "event", "workflow_path"],
+      "properties": {
+        "domain": { "enum": ["protected-governance", "candidate-runtime", "protected-recorder"] },
+        "event": { "type": "string", "minLength": 1 },
+        "workflow_path": { "type": "string", "pattern": "^\\.github/workflows/" }
+      }
+    },
+    "identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_id",
+        "repository_full_name",
+        "workflow_id",
+        "run_id",
+        "run_attempt",
+        "job_id",
+        "check_suite_id",
+        "check_run_id",
+        "app_id"
+      ],
+      "properties": {
+        "repository_id": { "type": "integer", "minimum": 1 },
+        "repository_full_name": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "workflow_id": { "type": "integer", "minimum": 1 },
+        "run_id": { "type": "integer", "minimum": 1 },
+        "run_attempt": { "type": "integer", "minimum": 1 },
+        "job_id": { "type": "integer", "minimum": 1 },
+        "check_suite_id": { "type": "integer", "minimum": 1 },
+        "check_run_id": { "type": "integer", "minimum": 1 },
+        "app_id": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_sha", "base_sha", "source_repository", "source_ref", "live_pull_request_sha"],
+      "properties": {
+        "candidate_sha": { "$ref": "#/$defs/sha256" },
+        "base_sha": { "$ref": "#/$defs/sha256" },
+        "source_repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "live_pull_request_sha": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protected_manifest", "governance_workflow", "runtime_workflow", "decision_workflow", "container_image"],
+      "properties": {
+        "protected_manifest": { "$ref": "#/$defs/sha256" },
+        "governance_workflow": { "$ref": "#/$defs/sha256" },
+        "runtime_workflow": { "$ref": "#/$defs/sha256" },
+        "decision_workflow": { "$ref": "#/$defs/sha256" },
+        "container_image": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": { "enum": ["none", "read", "write"] }
+    },
+    "api_attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation", "target", "http_status", "classification"],
+        "properties": {
+          "operation": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+          "classification": { "enum": ["allowed", "denied", "ambiguous", "not_attempted"] }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conclusion", "reason", "observed_at"],
+      "properties": {
+        "conclusion": { "enum": ["success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "observed_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}
+

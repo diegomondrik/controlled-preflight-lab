@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "case_id": "PF-06",
+  "title": "Neutral or skipped runtime is not success",
+  "candidate_branch": "preflight/pf-02-pf-06-impersonation",
+  "objective": "Confirm that only an explicit successful candidate-runtime conclusion can be considered by the protected recorder.",
+  "allowed_changed_paths": [
+    ".github/workflows/impersonating-governance.yml",
+    ".github/workflows/candidate-runtime.yml",
+    "preflight/cases/PF-02-check-impersonation.json",
+    "preflight/cases/PF-06-neutral-result.json"
+  ],
+  "required_observations": [
+    "neutral is rejected",
+    "skipped is rejected",
+    "cancelled and missing conclusions are rejected",
+    "no display-name-only result is promoted"
+  ],
+  "fail_closed_on": [
+    "conclusion other than success",
+    "missing conclusion",
+    "workflow identity mismatch",
+    "run identity ambiguity"
+  ]
+}

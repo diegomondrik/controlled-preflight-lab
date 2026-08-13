@@ -1,0 +1,286 @@
+name: protected-decision-recorder
+
+on:
+  workflow_run:
+    workflows: [candidate-runtime]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  protected-recorder:
+    name: protected-recorder
+    if: >-
+      github.event.workflow_run.head_repository.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ github.api_url }}
+      REPOSITORY: ${{ github.repository }}
+      REPOSITORY_ID: ${{ github.repository_id }}
+      CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+      SOURCE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+      SOURCE_REF: ${{ github.event.workflow_run.head_branch }}
+      CANDIDATE_RUN_ID: ${{ github.event.workflow_run.id }}
+      CANDIDATE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      CANDIDATE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RECORDER_RUN_ID: ${{ github.run_id }}
+      RECORDER_RUN_ATTEMPT: ${{ github.run_attempt }}
+      PROVIDER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Bind protected metadata and emit the exact decision check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import re
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          API = os.environ["API_URL"].rstrip("/")
+          REPO = os.environ["REPOSITORY"]
+          TOKEN = os.environ["PROVIDER_TOKEN"]
+          CANDIDATE = os.environ["CANDIDATE_SHA"]
+          EXPECTED_SOURCE = "controlled-preflight-bot/controlled-preflight-lab"
+
+          def api(method, path, payload=None, allow_error=False):
+              body = None if payload is None else json.dumps(payload).encode("utf-8")
+              request = urllib.request.Request(
+                  API + path,
+                  data=body,
+                  method=method,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": "Bearer " + TOKEN,
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "controlled-preflight-recorder",
+                      "Content-Type": "application/json",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      raw = response.read()
+                      return response.status, json.loads(raw) if raw else None
+              except urllib.error.HTTPError as error:
+                  raw = error.read()
+                  parsed = None
+                  try:
+                      parsed = json.loads(raw)
+                  except Exception:
+                      parsed = {"message": raw.decode("utf-8", "replace")[:1000]}
+                  if allow_error:
+                      return error.code, parsed
+                  raise RuntimeError(f"API {method} {path} returned {error.code}: {parsed}") from error
+
+          def create_check(name, sha, conclusion, summary, external_id):
+              return api(
+                  "POST",
+                  f"/repos/{REPO}/check-runs",
+                  {
+                      "name": name,
+                      "head_sha": sha,
+                      "status": "completed",
+                      "conclusion": conclusion,
+                      "external_id": external_id,
+                      "details_url": f"https://github.com/{REPO}/actions/runs/{os.environ['RECORDER_RUN_ID']}",
+                      "output": {
+                          "title": f"Protected decision {conclusion}",
+                          "summary": json.dumps(summary, sort_keys=True, separators=(",", ":")),
+                      },
+                  },
+                  allow_error=True,
+              )
+
+          errors = []
+          governance = None
+          base_sha = None
+          manifest_digest = None
+
+          if not re.fullmatch(r"[0-9a-f]{40}", CANDIDATE):
+              errors.append("candidate SHA is not an exact 40-character lowercase commit identity")
+          if REPO != "diegomondrik/controlled-preflight-lab":
+              errors.append("upstream repository identity mismatch")
+          if os.environ["SOURCE_REPOSITORY"] != EXPECTED_SOURCE:
+              errors.append("candidate repository identity mismatch")
+          if os.environ["CANDIDATE_CONCLUSION"] != "success":
+              errors.append("candidate runtime conclusion is not success")
+
+          try:
+              _, runtime = api("GET", f"/repos/{REPO}/actions/runs/{os.environ['CANDIDATE_RUN_ID']}")
+              if runtime.get("id") != int(os.environ["CANDIDATE_RUN_ID"]):
+                  errors.append("candidate run ID mismatch")
+              if runtime.get("run_attempt") != int(os.environ["CANDIDATE_RUN_ATTEMPT"]):
+                  errors.append("candidate run attempt mismatch")
+              if runtime.get("name") != "candidate-runtime":
+                  errors.append("candidate workflow name mismatch")
+              runtime_path = (runtime.get("path") or "").split("@", 1)[0]
+              if runtime_path != ".github/workflows/candidate-runtime.yml":
+                  errors.append("candidate workflow path mismatch")
+              if runtime.get("event") != "pull_request":
+                  errors.append("candidate event mismatch")
+              if runtime.get("head_sha") != CANDIDATE:
+                  errors.append("candidate run SHA mismatch")
+              if runtime.get("head_repository", {}).get("full_name") != EXPECTED_SOURCE:
+                  errors.append("candidate run source mismatch")
+          except Exception as exc:
+              errors.append(str(exc))
+
+          try:
+              owner = EXPECTED_SOURCE.split("/", 1)[0]
+              head_query = urllib.parse.quote(f"{owner}:{os.environ['SOURCE_REF']}", safe="")
+              _, pulls = api("GET", f"/repos/{REPO}/pulls?state=open&head={head_query}&per_page=10")
+              exact_pulls = [
+                  item for item in pulls
+                  if item.get("head", {}).get("repo", {}).get("full_name") == EXPECTED_SOURCE
+                  and item.get("head", {}).get("ref") == os.environ["SOURCE_REF"]
+              ]
+              if len(exact_pulls) != 1:
+                  errors.append("no unique live pull request for the candidate source")
+              elif exact_pulls[0].get("head", {}).get("sha") != CANDIDATE:
+                  errors.append("live pull-request head does not match the completed run")
+          except Exception as exc:
+              errors.append(str(exc))
+
+          try:
+              query = urllib.parse.urlencode({"check_name": "governance-record", "filter": "all", "per_page": 100})
+              _, checks = api("GET", f"/repos/{REPO}/commits/{CANDIDATE}/check-runs?{query}")
+              matches = [item for item in checks.get("check_runs", []) if item.get("name") == "governance-record"]
+              if len(matches) != 1:
+                  errors.append("candidate does not have exactly one governance-record")
+              else:
+                  governance_check = matches[0]
+                  if governance_check.get("conclusion") != "success":
+                      errors.append("governance-record conclusion is not success")
+                  if governance_check.get("status") != "completed":
+                      errors.append("governance-record status is not completed")
+                  if governance_check.get("head_sha") != CANDIDATE:
+                      errors.append("governance-record head SHA mismatch")
+                  app = governance_check.get("app") or {}
+                  if app.get("slug") != "github-actions":
+                      errors.append("governance-record app identity mismatch")
+                  summary = (governance_check.get("output") or {}).get("summary")
+                  if not isinstance(summary, str):
+                      errors.append("governance-record summary missing")
+                  else:
+                      governance = json.loads(summary)
+                      exact_bindings = {
+                          "candidate_sha": CANDIDATE,
+                          "source_repository": EXPECTED_SOURCE,
+                          "source_ref": os.environ["SOURCE_REF"],
+                          "validation": "passed",
+                          "governance_repository_id": int(os.environ["REPOSITORY_ID"]),
+                      }
+                      for key, expected in exact_bindings.items():
+                          if governance.get(key) != expected:
+                              errors.append(f"governance-record binding mismatch: {key}")
+                      expected_external_id = (
+                          f"governance:{governance.get('governance_run_id')}:"
+                          f"{governance.get('governance_run_attempt')}"
+                      )
+                      if governance_check.get("external_id") != expected_external_id:
+                          errors.append("governance-record external ID mismatch")
+                      expected_details = (
+                          f"https://github.com/{REPO}/actions/runs/"
+                          f"{governance.get('governance_run_id')}"
+                      )
+                      if governance_check.get("details_url") != expected_details:
+                          errors.append("governance-record details URL mismatch")
+                      base_sha = governance.get("base_sha")
+                      if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+                          errors.append("governance-record base SHA invalid")
+                      manifest_digest = governance.get("protected_manifest_sha256")
+                      if not isinstance(manifest_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", manifest_digest):
+                          errors.append("governance-record manifest digest invalid")
+          except Exception as exc:
+              errors.append(str(exc))
+
+          if governance and base_sha:
+              try:
+                  governance_run_id = governance.get("governance_run_id")
+                  _, run = api("GET", f"/repos/{REPO}/actions/runs/{governance_run_id}")
+                  if run.get("id") != governance_run_id:
+                      errors.append("governance run ID mismatch")
+                  if run.get("run_attempt") != governance.get("governance_run_attempt"):
+                      errors.append("governance run attempt mismatch")
+                  if run.get("event") != "pull_request_target":
+                      errors.append("governance event mismatch")
+                  if run.get("name") != "governance":
+                      errors.append("governance workflow name mismatch")
+                  governance_path = (run.get("path") or "").split("@", 1)[0]
+                  if governance_path != ".github/workflows/governance.yml":
+                      errors.append("governance workflow path mismatch")
+                  if run.get("head_sha") != base_sha:
+                      errors.append("governance protected-base SHA mismatch")
+                  if (run.get("repository") or {}).get("id") != int(os.environ["REPOSITORY_ID"]):
+                      errors.append("governance repository ID mismatch")
+                  if governance_check.get("check_suite", {}).get("id") != run.get("check_suite_id"):
+                      errors.append("governance check-suite identity mismatch")
+
+                  quoted_ref = urllib.parse.quote(base_sha, safe="")
+                  _, item = api("GET", f"/repos/{REPO}/contents/preflight/protected-manifest.json?ref={quoted_ref}")
+                  protected_bytes = base64.b64decode(item["content"], validate=False)
+                  if hashlib.sha256(protected_bytes).hexdigest() != manifest_digest:
+                      errors.append("protected manifest digest does not match the bound base content")
+              except Exception as exc:
+                  errors.append(str(exc))
+
+          decision = {
+              "schema_version": "1.0",
+              "candidate_sha": CANDIDATE,
+              "base_sha": base_sha,
+              "source_repository": os.environ["SOURCE_REPOSITORY"],
+              "source_ref": os.environ["SOURCE_REF"],
+              "candidate_run_id": int(os.environ["CANDIDATE_RUN_ID"]),
+              "candidate_run_attempt": int(os.environ["CANDIDATE_RUN_ATTEMPT"]),
+              "recorder_run_id": int(os.environ["RECORDER_RUN_ID"]),
+              "recorder_run_attempt": int(os.environ["RECORDER_RUN_ATTEMPT"]),
+              "protected_manifest_sha256": manifest_digest,
+              "validation": "failed" if errors else "passed",
+              "errors": errors,
+          }
+
+          if os.environ["SOURCE_REF"] == "preflight/pf-07-attribution" and base_sha:
+              status, response = create_check(
+                  "protected-decision-control",
+                  base_sha,
+                  "success",
+                  {"schema_version": "1.0", "control": "base-sha-attribution", "candidate_sha": CANDIDATE},
+                  f"control:{os.environ['RECORDER_RUN_ID']}:{os.environ['RECORDER_RUN_ATTEMPT']}",
+              )
+              if status != 201:
+                  errors.append(f"base-SHA control check creation returned HTTP {status}: {response}")
+                  decision["validation"] = "failed"
+                  decision["errors"] = errors
+
+          conclusion = "failure" if errors else "success"
+          status, response = create_check(
+              "protected-decision",
+              CANDIDATE,
+              conclusion,
+              decision,
+              f"decision:{os.environ['RECORDER_RUN_ID']}:{os.environ['RECORDER_RUN_ATTEMPT']}",
+          )
+          if status != 201:
+              print(json.dumps({
+                  "classification": "protected_decision_attribution_failure",
+                  "http_status": status,
+                  "response": response,
+                  "decision": decision,
+              }, indent=2, sort_keys=True))
+              sys.exit(1)
+
+          print(json.dumps(decision, indent=2, sort_keys=True))
+          if errors:
+              sys.exit(1)
+          PY
