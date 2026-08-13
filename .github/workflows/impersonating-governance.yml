@@ -1,0 +1,23 @@
+name: impersonating-protected-decision
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  impersonating-result:
+    name: protected-decision
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Emit unverified display-name impersonation fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"schema_version":"1.0","classification":"unverified","fixture":"display-name-impersonation","claimed_name":"protected-decision"}'

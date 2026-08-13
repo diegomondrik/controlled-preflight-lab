@@ -4,6 +4,11 @@
   "title": "Neutral or skipped runtime is not success",
   "candidate_branch": "preflight/pf-02-pf-06-impersonation",
   "objective": "Confirm that only an explicit successful candidate-runtime conclusion can be considered by the protected recorder.",
+  "candidate_fixture": {
+    "runtime_workflow_path": ".github/workflows/candidate-runtime.yml",
+    "expected_runtime_conclusion": "skipped",
+    "accepted_as_success": false
+  },
   "allowed_changed_paths": [
     ".github/workflows/impersonating-governance.yml",
     ".github/workflows/candidate-runtime.yml",

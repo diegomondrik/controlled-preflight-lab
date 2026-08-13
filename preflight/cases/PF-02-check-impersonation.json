@@ -4,6 +4,12 @@
   "title": "Candidate check-name impersonation is rejected",
   "candidate_branch": "preflight/pf-02-pf-06-impersonation",
   "objective": "Demonstrate that a candidate-controlled workflow cannot satisfy the protected governance or decision identity by reusing a display name.",
+  "candidate_fixture": {
+    "workflow_path": ".github/workflows/impersonating-governance.yml",
+    "workflow_name": "impersonating-protected-decision",
+    "job_display_name": "protected-decision",
+    "trust": "unverified"
+  },
   "allowed_changed_paths": [
     ".github/workflows/impersonating-governance.yml",
     ".github/workflows/candidate-runtime.yml",
