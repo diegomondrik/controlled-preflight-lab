@@ -4,6 +4,18 @@
   "title": "Hostile candidate input remains confined",
   "candidate_branch": "preflight/pf-08-hostile-input",
   "objective": "Demonstrate that protected governance treats hostile candidate build, configuration, action, and symlink inputs exclusively as path metadata.",
+  "candidate_fixture": {
+    "regular_files_must_not_execute": [
+      "go.mod",
+      "go.work",
+      "Makefile",
+      ".github/actions/hostile/action.yml"
+    ],
+    "symlink_path": "preflight/fixtures/PF-08/escape-link",
+    "symlink_git_mode": "120000",
+    "symlink_target": "../../../../synthetic-outside-target",
+    "filesystem_symlink_materialized": false
+  },
   "allowed_changed_paths": [
     "preflight/cases/PF-08-hostile-input.json",
     "go.mod",
