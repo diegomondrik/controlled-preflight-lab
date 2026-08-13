@@ -155,7 +155,7 @@
     },
     {
       "path": ".github/workflows/protected-decision.yml",
-      "sha256": "58646a31163dc0ae6648b702f7b5c5632e8f1d670ac7cf42e08f7f64eb7c47e2"
+      "sha256": "38d12aec1ac00908e956f82bebd7fdcaa27646e51ffb794ac3fa8c3c6f4557b0"
     },
     {
       "path": "preflight/evidence.schema.json",
@@ -191,7 +191,7 @@
     },
     {
       "path": "preflight/scripts/candidate-wrapper.sh",
-      "sha256": "ec39e2e728acf013843372bb9eb54da63fcfcace80eb0fb5493226a200c5a775"
+      "sha256": "c022692b62735bc21dbbb5e08ed25e51cc9055747324890ec88d74a3e810806e"
     }
   ]
 }
