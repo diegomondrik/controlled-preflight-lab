@@ -159,8 +159,8 @@ jobs:
             --pids-limit 128 \
             --memory 512m \
             --cpus 1 \
-            --tmpfs /work:rw,nosuid,nodev,size=268435456 \
-            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=67108864 \
+            --tmpfs /work:rw,nosuid,nodev,exec,mode=0700,uid=65532,gid=65532,size=268435456 \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,mode=0700,uid=65532,gid=65532,size=67108864 \
             --mount "type=bind,src=${GITHUB_WORKSPACE}/candidate,dst=/src,readonly" \
             --workdir /src \
             golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651 \

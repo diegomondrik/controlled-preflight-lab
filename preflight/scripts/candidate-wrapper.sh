@@ -44,7 +44,29 @@ export GOTMPDIR=/work/gotmp
 
 [ -w /src ] && fail isolation_failure source_mount_is_writable
 
-for required_tool in go tail base64 tr; do
+work_mount_seen=false
+tmp_mount_seen=false
+while IFS=' ' read -r mount_source mount_point mount_type mount_options mount_dump mount_pass; do
+  case "$mount_point" in
+    /work)
+      work_mount_seen=true
+      case ",$mount_options," in
+        *,noexec,*) fail isolation_failure work_mount_noexec ;;
+      esac
+      ;;
+    /tmp)
+      tmp_mount_seen=true
+      case ",$mount_options," in
+        *,noexec,*) ;;
+        *) fail isolation_failure tmp_mount_exec ;;
+      esac
+      ;;
+  esac
+done < /proc/mounts
+[ "$work_mount_seen" = true ] || fail isolation_failure work_mount_missing
+[ "$tmp_mount_seen" = true ] || fail isolation_failure tmp_mount_missing
+
+for required_tool in go tail base64 tr chmod; do
   command -v "$required_tool" >/dev/null 2>&1 || \
     fail toolchain_unavailable "${required_tool}_not_found"
 done
@@ -82,6 +104,9 @@ fi
 if ! go test -c -o /work/project/probe.test . >/work/compile-output.txt 2>&1; then
   fail_with_diagnostic compile_rejected synthetic_compile_failed /work/compile-output.txt
 fi
+
+chmod 0500 /work/project/probe.test || fail isolation_failure test_binary_chmod_failed
+[ -x /work/project/probe.test ] || fail isolation_failure test_binary_not_executable
 
 if ! /work/project/probe.test -test.v >/work/test-output.txt 2>&1; then
   fail_with_diagnostic test_failed synthetic_go_test_failed /work/test-output.txt
