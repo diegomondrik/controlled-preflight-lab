@@ -43,7 +43,9 @@
     "pids": 128,
     "timeout_seconds": 120,
     "work_tmpfs_bytes": 268435456,
-    "tmp_tmpfs_bytes": 67108864
+    "work_tmpfs_options": ["rw", "nosuid", "nodev", "exec", "mode=0700", "uid=65532", "gid=65532"],
+    "tmp_tmpfs_bytes": 67108864,
+    "tmp_tmpfs_options": ["rw", "nosuid", "nodev", "noexec", "mode=0700", "uid=65532", "gid=65532"]
   },
   "resource_ceiling": {
     "pull_requests": 5,
@@ -147,7 +149,7 @@
     },
     {
       "path": ".github/workflows/candidate-runtime.yml",
-      "sha256": "5a6da1175ced4d206535d08350093cdf0b74a85f3c2b3dd55bd82b450f2d8798"
+      "sha256": "3f9c171d81eb8cee4a712b6cfc9333ac78933132c5929fd9b355c170fc549705"
     },
     {
       "path": ".github/workflows/governance.yml",
@@ -191,7 +193,7 @@
     },
     {
       "path": "preflight/scripts/candidate-wrapper.sh",
-      "sha256": "c022692b62735bc21dbbb5e08ed25e51cc9055747324890ec88d74a3e810806e"
+      "sha256": "4e1d7ede89d3c8898b3e90dd1f89685ef9e61b5a9007d39e24ca208e42d98648"
     }
   ]
 }
