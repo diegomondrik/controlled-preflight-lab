@@ -43,7 +43,9 @@
     "pids": 128,
     "timeout_seconds": 120,
     "work_tmpfs_bytes": 268435456,
-    "tmp_tmpfs_bytes": 67108864
+    "work_tmpfs_options": ["rw", "nosuid", "nodev", "exec", "mode=0700", "uid=65532", "gid=65532"],
+    "tmp_tmpfs_bytes": 67108864,
+    "tmp_tmpfs_options": ["rw", "nosuid", "nodev", "noexec", "mode=0700", "uid=65532", "gid=65532"]
   },
   "resource_ceiling": {
     "pull_requests": 5,
@@ -147,7 +149,7 @@
     },
     {
       "path": ".github/workflows/candidate-runtime.yml",
-      "sha256": "5a6da1175ced4d206535d08350093cdf0b74a85f3c2b3dd55bd82b450f2d8798"
+      "sha256": "3f9c171d81eb8cee4a712b6cfc9333ac78933132c5929fd9b355c170fc549705"
     },
     {
       "path": ".github/workflows/governance.yml",
@@ -155,7 +157,7 @@
     },
     {
       "path": ".github/workflows/protected-decision.yml",
-      "sha256": "58646a31163dc0ae6648b702f7b5c5632e8f1d670ac7cf42e08f7f64eb7c47e2"
+      "sha256": "38d12aec1ac00908e956f82bebd7fdcaa27646e51ffb794ac3fa8c3c6f4557b0"
     },
     {
       "path": "preflight/evidence.schema.json",
@@ -191,7 +193,7 @@
     },
     {
       "path": "preflight/scripts/candidate-wrapper.sh",
-      "sha256": "ec39e2e728acf013843372bb9eb54da63fcfcace80eb0fb5493226a200c5a775"
+      "sha256": "4e1d7ede89d3c8898b3e90dd1f89685ef9e61b5a9007d39e24ca208e42d98648"
     }
   ]
 }
