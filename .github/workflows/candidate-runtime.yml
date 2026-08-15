@@ -5,11 +5,110 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  permission-boundary-probe:
+    name: permission-boundary-probe
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ github.api_url }}
+      EXPECTED_HEAD_REPOSITORY: controlled-preflight-bot/controlled-preflight-lab
+      EXPECTED_UPSTREAM_REPOSITORY: diegomondrik/controlled-preflight-lab
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      PROVIDER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Verify exact probe identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = pull_request
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_UPSTREAM_REPOSITORY"
+          test "$CANDIDATE_REPOSITORY" = "$EXPECTED_HEAD_REPOSITORY"
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Require explicit upstream ref-creation denial
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          api_url = os.environ["API_URL"]
+          repository = os.environ["EXPECTED_UPSTREAM_REPOSITORY"]
+          token = os.environ["PROVIDER_TOKEN"]
+          base_sha = os.environ["BASE_SHA"]
+          probe_ref = "refs/heads/preflight-write-probe"
+          ref_path = f"/repos/{repository}/git/ref/heads/preflight-write-probe"
+
+          def request(method, path, payload=None):
+              body = None if payload is None else json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  api_url + path,
+                  data=body,
+                  method=method,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "Content-Type": "application/json",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      return response.status, json.loads(response.read() or b"{}")
+              except urllib.error.HTTPError as error:
+                  raw = error.read()
+                  try:
+                      detail = json.loads(raw)
+                  except Exception:
+                      detail = {"message": raw.decode("utf-8", "replace")[:1000]}
+                  return error.code, detail
+
+          before_status, before_body = request("GET", ref_path)
+          if before_status == 200:
+              raise SystemExit("probe reference already exists")
+          if before_status != 404:
+              raise SystemExit(f"unexpected precheck status {before_status}: {before_body}")
+
+          create_status, create_body = request(
+              "POST",
+              f"/repos/{repository}/git/refs",
+              {"ref": probe_ref, "sha": base_sha},
+          )
+          if create_status == 201:
+              raise SystemExit("unsafe result: upstream probe reference was created")
+          if create_status != 403:
+              raise SystemExit(f"unexpected create status {create_status}: {create_body}")
+
+          after_status, after_body = request("GET", ref_path)
+          if after_status != 404:
+              raise SystemExit(f"probe reference exists after denied request: {after_status}: {after_body}")
+
+          print(json.dumps({
+              "schema_version": "1.0",
+              "classification": "denied",
+              "operation": "create-upstream-probe-ref",
+              "http_status": create_status,
+              "reference_absent_before": True,
+              "reference_absent_after": True,
+          }, sort_keys=True))
+          PY
+
   isolated-candidate-runtime:
     name: isolated-candidate-runtime
+    permissions:
+      contents: read
     if: >-
       github.event.pull_request.head.repo.full_name ==
       'controlled-preflight-bot/controlled-preflight-lab'
