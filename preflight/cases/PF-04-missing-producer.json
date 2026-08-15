@@ -4,6 +4,11 @@
   "title": "Missing protected producer blocks promotion",
   "candidate_branch": "preflight/pf-04-pf-05-head-binding",
   "objective": "Confirm that absence of the unique protected governance record for the candidate commit prevents a protected decision.",
+  "candidate_fixture": {
+    "head_1_producer_state": "present",
+    "head_2_producer_state": "candidate-runtime-workflow-deleted",
+    "expected_head_2_result": "required-check-missing"
+  },
   "allowed_changed_paths": [
     ".github/workflows/candidate-runtime.yml",
     "preflight/cases/PF-04-missing-producer.json",
