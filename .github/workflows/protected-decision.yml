@@ -53,6 +53,8 @@ jobs:
           TOKEN = os.environ["PROVIDER_TOKEN"]
           CANDIDATE = os.environ["CANDIDATE_SHA"]
           EXPECTED_SOURCE = "controlled-preflight-bot/controlled-preflight-lab"
+          EXPECTED_CHECK_APP_ID = 15368
+          EXPECTED_CHECK_APP_SLUG = "github-actions"
 
           def api(method, path, payload=None, allow_error=False):
               body = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -102,9 +104,111 @@ jobs:
                   allow_error=True,
               )
 
+          def parse_governance_record(item, candidate, source_ref, repository_id):
+              if not isinstance(item, dict):
+                  raise ValueError("governance-record is not an object")
+              check_id = item.get("id")
+              if not isinstance(check_id, int) or check_id <= 0:
+                  raise ValueError("governance-record check ID invalid")
+              exact = {
+                  "name": "governance-record",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "head_sha": candidate,
+              }
+              for key, expected in exact.items():
+                  if item.get(key) != expected:
+                      raise ValueError(f"governance-record binding mismatch: {key}")
+              app = item.get("app") or {}
+              if app.get("id") != EXPECTED_CHECK_APP_ID or app.get("slug") != EXPECTED_CHECK_APP_SLUG:
+                  raise ValueError("governance-record app identity mismatch")
+              output = item.get("output") or {}
+              if output.get("title") != "Protected governance success":
+                  raise ValueError("governance-record output title mismatch")
+              summary = output.get("summary")
+              if not isinstance(summary, str):
+                  raise ValueError("governance-record summary missing")
+              try:
+                  governance = json.loads(summary)
+              except json.JSONDecodeError as exc:
+                  raise ValueError("governance-record summary is not valid JSON") from exc
+              if not isinstance(governance, dict):
+                  raise ValueError("governance-record summary is not an object")
+              exact_bindings = {
+                  "schema_version": "1.0",
+                  "candidate_sha": candidate,
+                  "source_repository": EXPECTED_SOURCE,
+                  "source_ref": source_ref,
+                  "validation": "passed",
+                  "errors": [],
+                  "governance_repository_id": repository_id,
+              }
+              for key, expected in exact_bindings.items():
+                  if governance.get(key) != expected:
+                      raise ValueError(f"governance-record binding mismatch: {key}")
+              run_id = governance.get("governance_run_id")
+              run_attempt = governance.get("governance_run_attempt")
+              if not isinstance(run_id, int) or run_id <= 0:
+                  raise ValueError("governance-record run ID invalid")
+              if not isinstance(run_attempt, int) or run_attempt <= 0:
+                  raise ValueError("governance-record run attempt invalid")
+              expected_external_id = f"governance:{run_id}:{run_attempt}"
+              if item.get("external_id") != expected_external_id:
+                  raise ValueError("governance-record external ID mismatch")
+              base_sha = governance.get("base_sha")
+              if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+                  raise ValueError("governance-record base SHA invalid")
+              manifest_digest = governance.get("protected_manifest_sha256")
+              if not isinstance(manifest_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", manifest_digest):
+                  raise ValueError("governance-record manifest digest invalid")
+              suite_id = (item.get("check_suite") or {}).get("id")
+              if not isinstance(suite_id, int) or suite_id <= 0:
+                  raise ValueError("governance-record candidate check-suite ID invalid")
+              projection = {
+                  "name": item.get("name"),
+                  "head_sha": item.get("head_sha"),
+                  "external_id": item.get("external_id"),
+                  "status": item.get("status"),
+                  "conclusion": item.get("conclusion"),
+                  "app_id": app.get("id"),
+                  "app_slug": app.get("slug"),
+                  "output_title": output.get("title"),
+                  "output_summary": summary,
+                  "check_suite_id": suite_id,
+              }
+              return {"id": check_id, "item": item, "governance": governance, "projection": projection}
+
+          def select_governance_record(matches, candidate, source_ref, repository_id):
+              if not matches:
+                  raise ValueError("candidate does not have a governance-record")
+              parsed = [
+                  parse_governance_record(item, candidate, source_ref, repository_id)
+                  for item in matches
+              ]
+              ids = [record["id"] for record in parsed]
+              if len(ids) != len(set(ids)):
+                  raise ValueError("governance-record check IDs are not unique")
+              projection = parsed[0]["projection"]
+              if any(record["projection"] != projection for record in parsed[1:]):
+                  raise ValueError("governance-record duplicates are not exact protected equivalents")
+              selected = min(parsed, key=lambda record: record["id"])
+              return selected["item"], selected["governance"], sorted(ids)
+
+          def classify_base_control(source_ref, base_sha, http_status):
+              required = source_ref == "preflight/pf-07-attribution"
+              if not required:
+                  return {"required": False, "attempted": False, "http_status": None, "classification": "not-applicable"}
+              if not base_sha:
+                  return {"required": True, "attempted": False, "http_status": None, "classification": "not-attempted-missing-bound-base"}
+              if http_status == 201:
+                  return {"required": True, "attempted": True, "http_status": 201, "classification": "created"}
+              return {"required": True, "attempted": True, "http_status": http_status, "classification": "creation-failed"}
+
           errors = []
           governance = None
           governance_check = None
+          governance_equivalent_check_ids = []
+          governance_check_suite_id = None
           base_sha = None
           manifest_digest = None
           pull = None
@@ -162,47 +266,25 @@ jobs:
               query = urllib.parse.urlencode({"check_name": "governance-record", "filter": "all", "per_page": 100})
               _, checks = api("GET", f"/repos/{REPO}/commits/{CANDIDATE}/check-runs?{query}")
               matches = [item for item in checks.get("check_runs", []) if item.get("name") == "governance-record"]
-              if len(matches) != 1:
-                  errors.append("candidate does not have exactly one governance-record")
-              else:
-                  governance_check = matches[0]
-                  governance_check_details_url_observed = governance_check.get("details_url")
-                  if governance_check.get("conclusion") != "success":
-                      errors.append("governance-record conclusion is not success")
-                  if governance_check.get("status") != "completed":
-                      errors.append("governance-record status is not completed")
-                  if governance_check.get("head_sha") != CANDIDATE:
-                      errors.append("governance-record head SHA mismatch")
-                  app = governance_check.get("app") or {}
-                  if app.get("slug") != "github-actions":
-                      errors.append("governance-record app identity mismatch")
-                  summary = (governance_check.get("output") or {}).get("summary")
-                  if not isinstance(summary, str):
-                      errors.append("governance-record summary missing")
-                  else:
-                      governance = json.loads(summary)
-                      exact_bindings = {
-                          "candidate_sha": CANDIDATE,
-                          "source_repository": EXPECTED_SOURCE,
-                          "source_ref": os.environ["SOURCE_REF"],
-                          "validation": "passed",
-                          "governance_repository_id": int(os.environ["REPOSITORY_ID"]),
-                      }
-                      for key, expected in exact_bindings.items():
-                          if governance.get(key) != expected:
-                              errors.append(f"governance-record binding mismatch: {key}")
-                      expected_external_id = (
-                          f"governance:{governance.get('governance_run_id')}:"
-                          f"{governance.get('governance_run_attempt')}"
-                      )
-                      if governance_check.get("external_id") != expected_external_id:
-                          errors.append("governance-record external ID mismatch")
-                      base_sha = governance.get("base_sha")
-                      if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
-                          errors.append("governance-record base SHA invalid")
-                      manifest_digest = governance.get("protected_manifest_sha256")
-                      if not isinstance(manifest_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", manifest_digest):
-                          errors.append("governance-record manifest digest invalid")
+              governance_check, governance, governance_equivalent_check_ids = select_governance_record(
+                  matches,
+                  CANDIDATE,
+                  os.environ["SOURCE_REF"],
+                  int(os.environ["REPOSITORY_ID"]),
+              )
+              governance_check_details_url_observed = governance_check.get("details_url")
+              governance_check_suite_id = governance_check.get("check_suite", {}).get("id")
+              base_sha = governance.get("base_sha")
+              manifest_digest = governance.get("protected_manifest_sha256")
+
+              _, suite = api("GET", f"/repos/{REPO}/check-suites/{governance_check_suite_id}")
+              if suite.get("id") != governance_check_suite_id:
+                  errors.append("candidate check-suite ID mismatch")
+              if suite.get("head_sha") != CANDIDATE:
+                  errors.append("candidate check-suite head SHA mismatch")
+              suite_app = suite.get("app") or {}
+              if suite_app.get("id") != EXPECTED_CHECK_APP_ID or suite_app.get("slug") != EXPECTED_CHECK_APP_SLUG:
+                  errors.append("candidate check-suite app identity mismatch")
           except Exception as exc:
               errors.append(str(exc))
 
@@ -230,8 +312,6 @@ jobs:
                       errors.append("governance run source-repository association mismatch")
                   if (run.get("repository") or {}).get("id") != int(os.environ["REPOSITORY_ID"]):
                       errors.append("governance repository ID mismatch")
-                  if governance_check.get("check_suite", {}).get("id") != run.get("check_suite_id"):
-                      errors.append("governance check-suite identity mismatch")
 
                   if pull is None:
                       errors.append("live pull-request base binding unavailable")
@@ -248,8 +328,25 @@ jobs:
                   protected_bytes = base64.b64decode(item["content"], validate=False)
                   if hashlib.sha256(protected_bytes).hexdigest() != manifest_digest:
                       errors.append("protected manifest digest does not match the bound base content")
+                  protected_manifest = json.loads(protected_bytes)
+                  checks_app = (protected_manifest.get("laboratory") or {}).get("checks_app") or {}
+                  if checks_app.get("id") != EXPECTED_CHECK_APP_ID or checks_app.get("slug") != EXPECTED_CHECK_APP_SLUG:
+                      errors.append("protected manifest check-app binding mismatch")
               except Exception as exc:
                   errors.append(str(exc))
+
+          base_control_status = None
+          if os.environ["SOURCE_REF"] == "preflight/pf-07-attribution" and base_sha:
+              base_control_status, response = create_check(
+                  "protected-decision-control",
+                  base_sha,
+                  "success",
+                  {"schema_version": "1.0", "control": "base-sha-attribution", "candidate_sha": CANDIDATE},
+                  f"control:{os.environ['RECORDER_RUN_ID']}:{os.environ['RECORDER_RUN_ATTEMPT']}",
+              )
+              if base_control_status != 201:
+                  errors.append(f"base-SHA control check creation returned HTTP {base_control_status}: {response}")
+          base_control = classify_base_control(os.environ["SOURCE_REF"], base_sha, base_control_status)
 
           decision = {
               "schema_version": "1.0",
@@ -263,23 +360,16 @@ jobs:
               "recorder_run_attempt": int(os.environ["RECORDER_RUN_ATTEMPT"]),
               "protected_manifest_sha256": manifest_digest,
               "governance_run_api_head_sha_observed": governance_run_api_head_sha,
+              "governance_check_id_selected": governance_check.get("id") if governance_check else None,
+              "governance_check_external_id": governance_check.get("external_id") if governance_check else None,
+              "governance_check_suite_id": governance_check_suite_id,
+              "governance_equivalent_check_ids": governance_equivalent_check_ids,
+              "governance_equivalent_check_count": len(governance_equivalent_check_ids),
               "governance_check_details_url_observed": governance_check_details_url_observed,
+              "base_sha_control": base_control,
               "validation": "failed" if errors else "passed",
               "errors": errors,
           }
-
-          if os.environ["SOURCE_REF"] == "preflight/pf-07-attribution" and base_sha:
-              status, response = create_check(
-                  "protected-decision-control",
-                  base_sha,
-                  "success",
-                  {"schema_version": "1.0", "control": "base-sha-attribution", "candidate_sha": CANDIDATE},
-                  f"control:{os.environ['RECORDER_RUN_ID']}:{os.environ['RECORDER_RUN_ATTEMPT']}",
-              )
-              if status != 201:
-                  errors.append(f"base-SHA control check creation returned HTTP {status}: {response}")
-                  decision["validation"] = "failed"
-                  decision["errors"] = errors
 
           conclusion = "failure" if errors else "success"
           status, response = create_check(

@@ -7,7 +7,11 @@
     "target_branch": "main",
     "ruleset_name": "protect-main",
     "required_protected_result": "protected-decision",
-    "harmless_probe_branch": "preflight-write-probe"
+    "harmless_probe_branch": "preflight-write-probe",
+    "checks_app": {
+      "id": 15368,
+      "slug": "github-actions"
+    }
   },
   "trust_domains": [
     {
@@ -157,7 +161,7 @@
     },
     {
       "path": ".github/workflows/protected-decision.yml",
-      "sha256": "38d12aec1ac00908e956f82bebd7fdcaa27646e51ffb794ac3fa8c3c6f4557b0"
+      "sha256": "08fdb4d296e632d61972bc420277a5c95d2c21e6797d903a69e40f4303d55288"
     },
     {
       "path": "preflight/evidence.schema.json",
