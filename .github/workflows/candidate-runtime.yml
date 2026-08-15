@@ -18,6 +18,7 @@ jobs:
     env:
       EXPECTED_HEAD_REPOSITORY: controlled-preflight-bot/controlled-preflight-lab
       EXPECTED_UPSTREAM_REPOSITORY: diegomondrik/controlled-preflight-lab
+      PREFLIGHT_CASE: PF-07
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
       CANDIDATE_REF: ${{ github.event.pull_request.head.ref }}
       CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
@@ -31,6 +32,12 @@ jobs:
           test "$CANDIDATE_REPOSITORY" = "$EXPECTED_HEAD_REPOSITORY"
           test "$CANDIDATE_SHA" != "$GITHUB_SHA"
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Emit synthetic attribution marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"schema_version":"1.0","case_id":"PF-07","classification":"unverified","detail":"candidate-attribution-marker"}'
 
       - name: Fetch the exact public candidate without credentials
         shell: bash

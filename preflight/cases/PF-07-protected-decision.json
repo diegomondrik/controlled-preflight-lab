@@ -4,6 +4,11 @@
   "title": "Protected decision is attributed to the exact candidate commit",
   "candidate_branch": "preflight/pf-07-attribution",
   "objective": "Test whether the protected recorder can create the required protected-decision check on the exact fork candidate SHA while retaining protected producer identity.",
+  "candidate_fixture": {
+    "marker": "candidate-attribution-marker",
+    "trust": "unverified",
+    "base_sha_control_required": true
+  },
   "allowed_changed_paths": [
     ".github/workflows/candidate-runtime.yml",
     "preflight/cases/PF-07-protected-decision.json"
