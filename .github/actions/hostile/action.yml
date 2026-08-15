@@ -1,0 +1,11 @@
+name: PF-08 synthetic action that must not execute
+description: Candidate-controlled fixture for protected-governance non-execution evidence
+
+runs:
+  using: composite
+  steps:
+    - name: Fail if invoked
+      shell: bash
+      run: |
+        printf '%s\n' 'PF-08 synthetic candidate action was unexpectedly invoked' >&2
+        exit 97
