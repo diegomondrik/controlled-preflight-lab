@@ -1,0 +1,56 @@
+name: stage-b-g01-recorder
+
+on:
+  workflow_run:
+    workflows: [stage-b-g01-failure-producer]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+
+jobs:
+  authoritative-failure-recorder:
+    name: authoritative-failure-recorder
+    if: >-
+      github.event.workflow_run.head_repository.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab' &&
+      github.event.workflow_run.head_branch == 'stage-b/b-06'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ github.api_url }}
+      REPOSITORY: ${{ github.repository }}
+      CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+      PROTECTED_BASE_SHA: ${{ github.workflow_sha }}
+      CASE_ID: B-06
+      FAILURE_RUN_ID: ${{ github.event.workflow_run.id }}
+      FAILURE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      RECORDER_RUN_ID: ${{ github.run_id }}
+      RECORDER_RUN_ATTEMPT: ${{ github.run_attempt }}
+      RECORDER_WORKFLOW_PATH: .github/workflows/g01-recorder.yml
+      RECORDER_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      FAILURE_WORKFLOW_PATH: .github/workflows/g01-failure-producer.yml
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Fetch exact protected source without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/protected-source"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$PROTECTED_BASE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$PROTECTED_BASE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          (cd "$root" && sha256sum -c stage-b/manifests/protected-closure.sha256)
+          chmod -R a-w "$root"
+
+      - name: Build and run the protected recorder
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh "$RUNNER_TEMP/protected-source/stage-b/scripts/build-protected-tool.sh" \
+            "$RUNNER_TEMP/protected-source" g01-recorder "$RUNNER_TEMP/bin/g01-recorder"
+          "$RUNNER_TEMP/bin/g01-recorder"

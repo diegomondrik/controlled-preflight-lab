@@ -1,0 +1,64 @@
+name: stage-b-oracle-recorder
+
+on:
+  workflow_run:
+    workflows: [stage-b-protected-oracle]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+
+jobs:
+  oracle-recorder:
+    name: oracle-recorder
+    if: >-
+      github.event.workflow_run.head_repository.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ github.api_url }}
+      REPOSITORY: ${{ github.repository }}
+      CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+      PROTECTED_BASE_SHA: ${{ github.workflow_sha }}
+      SOURCE_REF: ${{ github.event.workflow_run.head_branch }}
+      PRODUCER_KIND: oracle
+      PRODUCER_RUN_ID: ${{ github.event.workflow_run.id }}
+      PRODUCER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      PRODUCER_WORKFLOW_PATH: .github/workflows/stage-b-protected-oracle.yml
+      RECORDER_RUN_ID: ${{ github.run_id }}
+      RECORDER_RUN_ATTEMPT: ${{ github.run_attempt }}
+      RECORDER_WORKFLOW_PATH: .github/workflows/stage-b-oracle-recorder.yml
+      RECORDER_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Bind exact case ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$SOURCE_REF" in
+            stage-b/b-01) case_id=B-01 ;; stage-b/b-02) case_id=B-02 ;;
+            stage-b/b-03) case_id=B-03 ;; stage-b/b-04) case_id=B-04 ;;
+            stage-b/b-05) case_id=B-05 ;; stage-b/b-06) case_id=B-06 ;;
+            stage-b/b-07) case_id=B-07 ;; stage-b/b-08) case_id=B-08 ;;
+            stage-b/b-09) case_id=B-09 ;; stage-b/b-10) case_id=B-10 ;;
+            stage-b/b-11) case_id=B-11 ;; *) exit 1 ;;
+          esac
+          echo "CASE_ID=$case_id" >> "$GITHUB_ENV"
+
+      - name: Fetch exact protected recorder source and record oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/protected-source"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$PROTECTED_BASE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$PROTECTED_BASE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          (cd "$root" && sha256sum -c stage-b/manifests/protected-closure.sha256)
+          chmod -R a-w "$root"
+          sh "$root/stage-b/scripts/build-protected-tool.sh" "$root" stage-b-recorder "$RUNNER_TEMP/bin/stage-b-recorder"
+          "$RUNNER_TEMP/bin/stage-b-recorder"

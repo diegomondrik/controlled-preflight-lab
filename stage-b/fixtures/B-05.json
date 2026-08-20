@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-05","condition":"candidate runtime invocation replaced by trivial pass","execution_policy":"governance-only-no-workflow-approval","expected_governance":"failure","merge":"prohibited"}

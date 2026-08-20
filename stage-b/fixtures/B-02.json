@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-02","condition":"deliberately non-compiling candidate adapter","expected_runtime":"compile_rejected","expected_decision":"failure","merge":"prohibited"}

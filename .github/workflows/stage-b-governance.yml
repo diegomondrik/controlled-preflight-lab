@@ -1,0 +1,54 @@
+name: stage-b-governance
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  protected-governance:
+    name: protected-governance
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ github.api_url }}
+      REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+      PROTECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+      SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      SOURCE_REF: ${{ github.event.pull_request.head.ref }}
+      RUN_ID: ${{ github.run_id }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Fetch exact protected source without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/protected-source"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$PROTECTED_BASE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$PROTECTED_BASE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          (cd "$root" && sha256sum -c stage-b/manifests/protected-closure.sha256)
+          chmod -R a-w "$root"
+          echo "CASES_MANIFEST=$root/stage-b/manifests/cases.json" >> "$GITHUB_ENV"
+
+      - name: Evaluate candidate metadata only and emit protected record
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh "$RUNNER_TEMP/protected-source/stage-b/scripts/build-protected-tool.sh" \
+            "$RUNNER_TEMP/protected-source" stage-b-governance "$RUNNER_TEMP/bin/stage-b-governance"
+          "$RUNNER_TEMP/bin/stage-b-governance"

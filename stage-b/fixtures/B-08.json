@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-08","condition":"new candidate head after earlier protected success","head_count":2,"expected":"earlier_success_does_not_satisfy_new_head","merge":"prohibited"}
