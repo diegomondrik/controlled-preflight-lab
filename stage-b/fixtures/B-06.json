@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-06","condition":"late same-name success after authoritative protected failure","entry_gate":"G-01","expected_pr_state":"blocked-before-and-after","expected_topology":"no masking","merge":"prohibited"}

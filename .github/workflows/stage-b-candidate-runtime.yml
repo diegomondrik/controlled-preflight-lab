@@ -1,0 +1,83 @@
+name: stage-b-candidate-runtime
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-candidate-runtime:
+    name: isolated-candidate-runtime
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab' &&
+      (github.event.pull_request.head.ref == 'stage-b/b-01' ||
+      github.event.pull_request.head.ref == 'stage-b/b-02' ||
+      github.event.pull_request.head.ref == 'stage-b/b-03' ||
+      github.event.pull_request.head.ref == 'stage-b/b-08' ||
+      github.event.pull_request.head.ref == 'stage-b/b-10')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+      CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      SOURCE_REF: ${{ github.event.pull_request.head.ref }}
+    steps:
+      - name: Map exact candidate branch to case
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$SOURCE_REF" in
+            stage-b/b-01) case_id=B-01 ;; stage-b/b-02) case_id=B-02 ;;
+            stage-b/b-03) case_id=B-03 ;; stage-b/b-04) case_id=B-04 ;;
+            stage-b/b-05) case_id=B-05 ;; stage-b/b-06) case_id=B-06 ;;
+            stage-b/b-07) case_id=B-07 ;; stage-b/b-08) case_id=B-08 ;;
+            stage-b/b-09) case_id=B-09 ;; stage-b/b-10) case_id=B-10 ;;
+            stage-b/b-11) case_id=B-11 ;; *) exit 1 ;;
+          esac
+          echo "CASE_ID=$case_id" >> "$GITHUB_ENV"
+
+      - name: Fetch exact candidate without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/candidate"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${CANDIDATE_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$CANDIDATE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$CANDIDATE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+
+      - name: Build and run candidate only inside containment
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '{"schema_version":"1.0","case_id":"%s","operation":"evaluate_evidence_disposition"}\n' "$CASE_ID" > "$RUNNER_TEMP/request.json"
+          docker run --rm \
+            --platform linux/amd64 --network none --read-only --user 65532:65532 \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --pids-limit 128 --memory 512m --cpus 1 \
+            --tmpfs /work:rw,nosuid,nodev,size=268435456 \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=67108864 \
+            --mount "type=bind,src=${RUNNER_TEMP}/candidate,dst=/src,readonly" \
+            --mount "type=bind,src=${RUNNER_TEMP}/request.json,dst=/request.json,readonly" \
+            --workdir /src/stage-b \
+            golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651 \
+            /bin/sh -ceu '
+              export HOME=/work/home GOCACHE=/work/gocache GOMODCACHE=/work/gomodcache
+              export GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly CGO_ENABLED=0
+              mkdir -p "$HOME" "$GOCACHE" "$GOMODCACHE"
+              if ! go build -trimpath -buildvcs=false -o /work/candidate ./runtime-adapter > /work/candidate-build.log 2>&1; then
+                tail -c 4096 /work/candidate-build.log
+                printf "%s\n" "{\"schema_version\":\"1.0\",\"classification\":\"compile_rejected\"}"
+                exit 1
+              fi
+              if ! go test ./runtime-adapter > /work/candidate-test.log 2>&1; then
+                tail -c 4096 /work/candidate-test.log
+                printf "%s\n" "{\"schema_version\":\"1.0\",\"classification\":\"test_failed\"}"
+                exit 1
+              fi
+              /work/candidate < /request.json
+            '

@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-09","condition":"candidate requests write permission and upstream ref creation","execution_policy":"governance-only-no-workflow-approval","expected":"governance_rejects_and_ref_absent","merge":"prohibited"}

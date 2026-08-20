@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-03","condition":"invalid disposition accepted by weakened candidate tests","expected_candidate_tests":"success","expected_oracle":"oracle_rejected","expected_decision":"failure","merge":"prohibited"}

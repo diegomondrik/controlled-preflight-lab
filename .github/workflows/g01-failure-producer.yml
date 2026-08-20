@@ -1,0 +1,29 @@
+name: stage-b-g01-failure-producer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  selected-protected-failure:
+    name: selected-protected-failure
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab' &&
+      github.event.pull_request.head.ref == 'stage-b/b-06'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Emit the selected non-success for G-01
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$CANDIDATE_SHA" = "$EVENT_HEAD_SHA"
+          printf '%s\n' '{"schema_version":"1.0","case_id":"B-06","classification":"selected_authoritative_failure"}'
+          exit 1

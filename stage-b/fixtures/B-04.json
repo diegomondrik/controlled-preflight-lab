@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-04","condition":"candidate runtime workflow deleted","execution_policy":"governance-only-no-workflow-approval","expected_governance":"failure","expected_producer":"missing","merge":"prohibited"}

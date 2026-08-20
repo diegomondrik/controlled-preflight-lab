@@ -1,0 +1,45 @@
+name: stage-b-protected-decision
+
+on:
+  workflow_run:
+    workflows: [stage-b-protected-oracle]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  protected-conjunction:
+    name: protected-conjunction
+    if: >-
+      github.event.workflow_run.head_repository.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API_URL: ${{ github.api_url }}
+      REPOSITORY: ${{ github.repository }}
+      CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+      PROTECTED_BASE_SHA: ${{ github.workflow_sha }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+      RUN_ID: ${{ github.run_id }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Fetch exact protected decision source and bind conjunction
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/protected-source"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$PROTECTED_BASE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$PROTECTED_BASE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          (cd "$root" && sha256sum -c stage-b/manifests/protected-closure.sha256)
+          chmod -R a-w "$root"
+          sh "$root/stage-b/scripts/build-protected-tool.sh" "$root" protected-decision "$RUNNER_TEMP/bin/protected-decision"
+          "$RUNNER_TEMP/bin/protected-decision"

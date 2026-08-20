@@ -1,0 +1,97 @@
+name: stage-b-g02-runner-guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  g02-runner-guard:
+    name: g02-runner-guard
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab' &&
+      github.event.pull_request.head.ref == 'stage-b/b-07'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+      CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      CANDIDATE_REF: ${{ github.event.pull_request.head.ref }}
+      PROTECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HOSTILE_ENTRY: stage-b/fixtures/B-07/escape-link
+      HOSTILE_TARGET: ../../../../stage-b-g02-sentinel
+    steps:
+      - name: Fetch exact protected base and build guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/protected-source"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$PROTECTED_BASE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$PROTECTED_BASE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          (cd "$root" && sha256sum -c stage-b/manifests/protected-closure.sha256)
+          chmod -R a-w "$root"
+          sh "$root/stage-b/scripts/build-protected-tool.sh" "$root" g02-guard "$RUNNER_TEMP/bin/g02-guard"
+
+      - name: Create synthetic outside sentinel before candidate checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'INGOL-STAGE-B-G02-SYNTHETIC-SENTINEL' > "$RUNNER_TEMP/stage-b-g02-sentinel"
+          chmod 0444 "$RUNNER_TEMP/stage-b-g02-sentinel"
+          sha256sum "$RUNNER_TEMP/stage-b-g02-sentinel" > "$RUNNER_TEMP/sentinel.before.sha256"
+
+      - name: Fetch exact candidate separately without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/candidate"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${CANDIDATE_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$CANDIDATE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$CANDIDATE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$root" rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+      - name: First metadata-only hostile-link observation
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/bin/g02-guard" observe "$RUNNER_TEMP/candidate" "$HOSTILE_ENTRY" "$HOSTILE_TARGET" "$RUNNER_TEMP/stage-b-g02-sentinel"
+
+      - name: Repeat guard and run bounded contained probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/bin/g02-guard" observe "$RUNNER_TEMP/candidate" "$HOSTILE_ENTRY" "$HOSTILE_TARGET" "$RUNNER_TEMP/stage-b-g02-sentinel"
+          docker run --name ingol-stage-b-g02 --rm \
+            --platform linux/amd64 \
+            --network none \
+            --read-only \
+            --user 65532:65532 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --pids-limit 32 \
+            --memory 128m \
+            --cpus 1 \
+            --mount "type=bind,src=${RUNNER_TEMP}/candidate,dst=/candidate,readonly" \
+            --mount "type=bind,src=${RUNNER_TEMP}/bin/g02-guard,dst=/opt/g02-guard,readonly" \
+            --workdir /candidate \
+            golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651 \
+            /opt/g02-guard probe /candidate "$HOSTILE_ENTRY" "$HOSTILE_TARGET" -
+          if docker inspect ingol-stage-b-g02 >/dev/null 2>&1; then
+            echo 'container removal not proved' >&2
+            exit 1
+          fi
+
+      - name: Prove outside sentinel unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check "$RUNNER_TEMP/sentinel.before.sha256"
+          "$RUNNER_TEMP/bin/g02-guard" observe "$RUNNER_TEMP/candidate" "$HOSTILE_ENTRY" "$HOSTILE_TARGET" "$RUNNER_TEMP/stage-b-g02-sentinel"

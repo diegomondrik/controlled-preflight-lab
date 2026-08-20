@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "repository": {
+    "upstream": "diegomondrik/controlled-preflight-lab",
+    "candidate": "controlled-preflight-bot/controlled-preflight-lab",
+    "target_branch": "main"
+  },
+  "cases": [
+    {"case_id":"B-01","branch":"stage-b/b-01","execution_policy":"semantic","allowed_changed_paths":["stage-b/case-input.json"],"required_changed_paths":["stage-b/case-input.json"]},
+    {"case_id":"B-02","branch":"stage-b/b-02","execution_policy":"semantic","allowed_changed_paths":["stage-b/case-input.json","stage-b/runtime-adapter/main.go"],"required_changed_paths":["stage-b/case-input.json","stage-b/runtime-adapter/main.go"]},
+    {"case_id":"B-03","branch":"stage-b/b-03","execution_policy":"semantic","allowed_changed_paths":["stage-b/case-input.json"],"required_changed_paths":["stage-b/case-input.json"]},
+    {"case_id":"B-04","branch":"stage-b/b-04","execution_policy":"governance-only-no-workflow-approval","allowed_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"],"required_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"]},
+    {"case_id":"B-05","branch":"stage-b/b-05","execution_policy":"governance-only-no-workflow-approval","allowed_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"],"required_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"]},
+    {"case_id":"B-06","branch":"stage-b/b-06","execution_policy":"g01-only-after-g01-g02-entry-gates","allowed_changed_paths":["stage-b/case-input.json"],"required_changed_paths":["stage-b/case-input.json"]},
+    {"case_id":"B-07","branch":"stage-b/b-07","execution_policy":"g02-only-before-semantic-batch","allowed_changed_paths":["stage-b/case-input.json","stage-b/fixtures/B-07/escape-link"],"required_changed_paths":["stage-b/case-input.json","stage-b/fixtures/B-07/escape-link"]},
+    {"case_id":"B-08","branch":"stage-b/b-08","execution_policy":"two-head-semantic","allowed_changed_paths":["stage-b/case-input.json"],"required_changed_paths":["stage-b/case-input.json"]},
+    {"case_id":"B-09","branch":"stage-b/b-09","execution_policy":"governance-only-no-workflow-approval","allowed_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"],"required_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"]},
+    {"case_id":"B-10","branch":"stage-b/b-10","execution_policy":"semantic-contained-probes","allowed_changed_paths":["stage-b/case-input.json"],"required_changed_paths":["stage-b/case-input.json"]},
+    {"case_id":"B-11","branch":"stage-b/b-11","execution_policy":"governance-only-no-workflow-approval","allowed_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"],"required_changed_paths":["stage-b/case-input.json",".github/workflows/stage-b-candidate-runtime.yml"]}
+  ],
+  "frozen_candidate_paths": [
+    ".github/workflows/g01-failure-producer.yml",
+    ".github/workflows/g01-impersonator.yml",
+    ".github/workflows/g01-recorder.yml",
+    ".github/workflows/g02-runner-guard.yml",
+    ".github/workflows/stage-b-governance.yml",
+    ".github/workflows/stage-b-candidate-runtime.yml",
+    ".github/workflows/stage-b-protected-oracle.yml",
+    ".github/workflows/stage-b-runtime-recorder.yml",
+    ".github/workflows/stage-b-oracle-recorder.yml",
+    ".github/workflows/stage-b-protected-decision.yml",
+    "stage-b/go.mod",
+    "stage-b/internal/githubapi/client.go",
+    "stage-b/internal/model/github.go",
+    "stage-b/cmd/g01-release-gate/main.go",
+    "stage-b/cmd/g01-recorder/main.go",
+    "stage-b/cmd/g02-guard/main.go",
+    "stage-b/cmd/stage-b-governance/main.go",
+    "stage-b/cmd/stage-b-recorder/main.go",
+    "stage-b/cmd/protected-oracle/main.go",
+    "stage-b/cmd/protected-decision/main.go",
+    "stage-b/scripts/build-protected-tool.sh",
+    "stage-b/manifests/cases.json",
+    "stage-b/manifests/protected-closure.sha256",
+    "stage-b/schemas/black-box-protocol.schema.json",
+    "stage-b/schemas/evidence.schema.json"
+  ]
+}

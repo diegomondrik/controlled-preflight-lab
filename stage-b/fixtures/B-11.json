@@ -1,0 +1,2 @@
+{"schema_version":"1.0","case_id":"B-11","condition":"candidate alters host step wrapper or environment","execution_policy":"governance-only-no-workflow-approval","expected":"governance_rejects_and_altered_workflow_never_approved","merge":"prohibited"}
+

@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-07","condition":"hostile symbolic link targets synthetic outside sentinel","entry_gate":"G-02","virtual_entry":{"path":"stage-b/fixtures/B-07/escape-link","git_mode":"120000","target":"../../../../stage-b-g02-sentinel"},"expected":"sentinel_unchanged_and_container_target_absent","merge":"prohibited"}

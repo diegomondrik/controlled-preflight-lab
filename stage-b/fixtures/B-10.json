@@ -1,0 +1,1 @@
+{"schema_version":"1.0","case_id":"B-10","condition":"candidate probes token secret network socket device command file and persistence","execution_policy":"semantic-contained-probes","expected":"all_absent_or_denied_without_value_disclosure","merge":"prohibited"}

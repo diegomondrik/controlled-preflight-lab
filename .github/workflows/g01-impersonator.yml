@@ -1,0 +1,60 @@
+name: stage-b-g01-impersonator
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  protected-decision:
+    name: protected-decision
+    if: >-
+      github.event.pull_request.head.repo.full_name ==
+      'controlled-preflight-bot/controlled-preflight-lab' &&
+      github.event.pull_request.head.ref == 'stage-b/b-06'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      API_URL: ${{ github.api_url }}
+      REPOSITORY: ${{ github.repository }}
+      CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+      PROTECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      CASE_ID: B-06
+      IMPERSONATOR_RUN_ID: ${{ github.run_id }}
+      IMPERSONATOR_RUN_ATTEMPT: ${{ github.run_attempt }}
+      FAILURE_RUN_ATTEMPT: '1'
+      RECORDER_RUN_ATTEMPT: '1'
+      IMPERSONATOR_WORKFLOW_PATH: .github/workflows/g01-impersonator.yml
+      FAILURE_WORKFLOW_PATH: .github/workflows/g01-failure-producer.yml
+      RECORDER_WORKFLOW_PATH: .github/workflows/g01-recorder.yml
+      POLL_DEADLINE_SECONDS: '240'
+      POLL_INTERVAL_SECONDS: '5'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Fetch exact protected gate source without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/protected-source"
+          git -c core.hooksPath=/dev/null init --quiet "$root"
+          git -C "$root" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$root" -c credential.helper= fetch --quiet --depth=1 origin "$PROTECTED_BASE_SHA"
+          test "$(git -C "$root" rev-parse FETCH_HEAD)" = "$PROTECTED_BASE_SHA"
+          git -C "$root" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          (cd "$root" && sha256sum -c stage-b/manifests/protected-closure.sha256)
+          chmod -R a-w "$root"
+
+      - name: Hold until the complete read-only predicate is true
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh "$RUNNER_TEMP/protected-source/stage-b/scripts/build-protected-tool.sh" \
+            "$RUNNER_TEMP/protected-source" g01-release-gate "$RUNNER_TEMP/bin/g01-release-gate"
+          "$RUNNER_TEMP/bin/g01-release-gate"
